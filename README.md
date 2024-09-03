@@ -2,6 +2,9 @@
 
 This example uses Argo Workflows to build and test a simple .NET Core application.
 
+![image](https://github.com/user-attachments/assets/e55437a8-dfdd-4f43-bde3-76f16264dbba)
+
+
 ## Steps
 1. Checks out the code from this repo to a PVC in kubernetes
 2. Injects a specially formatted docker authentication file to allow later steps to push to a private docker registry
