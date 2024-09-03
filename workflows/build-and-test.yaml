@@ -6,6 +6,7 @@ metadata:
 spec:
   entrypoint: workflow
   serviceAccountName: ci
+
   volumeClaimTemplates:
     - metadata:
         name: creds-and-code
