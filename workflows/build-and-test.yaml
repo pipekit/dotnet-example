@@ -15,7 +15,6 @@ spec:
         resources:
           requests:
             storage: 2Gi
-
   templates:
     - name: workflow
       dag:
