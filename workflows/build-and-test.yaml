@@ -160,6 +160,11 @@ spec:
             --output \
             type=image,name=docker.io/pipekitdev/dotnet-example:latest,push=true \
 
+            # Get the digest of the image we just built and output for future steps
+            cd /git/src/github.com/pipekit/dotnet-example/ || exit 1
+            digest=$(cat build_metadata.json | jq -r '.["containerimage.digest"]')
+            echo "dotnet-example:latest@${digest}" > /tmp/container_image.txt
+
             # Echo useful things out to stdout
             echo "---"
             echo "Container information:"
@@ -176,6 +181,11 @@ spec:
             mountPath: /git
           - name: code
             mountPath: /code
+        outputs:
+          parameters:
+            - name: container_image
+              valueFrom:
+                path: /tmp/container_image.txt
         securityContext:
           seccompProfile:
             type: Unconfined
