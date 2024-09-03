@@ -1,0 +1,177 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: dotnet-build-and-test-
+  namespace: ci
+spec:
+  entrypoint: workflow
+  serviceAccountName: ci
+  volumeClaimTemplates:
+    - metadata:
+        name: creds-and-code
+      spec:
+        accessModes: ["ReadWriteMany"]
+        storageClassName: nfs
+        resources:
+          requests:
+            storage: 2Gi
+
+  templates:
+    - name: workflow
+      dag:
+        tasks:
+          - name: mount-docker-secret
+            template: mount-docker-secret
+            depends: clone-repo
+          - name: clone-repo
+            template: clone-repo
+          - name: build-container
+            template: build-container
+            arguments:
+              parameters:
+                - name: dockerfile
+                  value: "Dockerfile"
+                - name: memory
+                  value: "250Mi"
+                - name: cpu
+                  value: "500m"
+
+    - name: mount-docker-secret
+      nodeSelector:
+        nodegroup: arm-spot
+      container:
+        image: pipekitdev/ci-alpine
+        imagePullPolicy: Always
+        command:
+          - sh
+          - -c
+          - |
+            echo "The docker username is: ${DOCKER_USERNAME}"
+            echo "----"
+            AUTH=$(echo -n "${DOCKER_USERNAME}:${DOCKER_PASSWORD}" | base64);
+            echo """{
+                \"auths\": {
+                    \"https://index.docker.io/v1/\": {
+                        \"auth\": \"${AUTH}\"
+                    }
+                }
+            }""" >> /buildkit/.docker/config.json
+        volumeMounts:
+          - name: creds-and-code
+            mountPath: /buildkit/.docker
+        resources:
+          requests:
+            memory: 32Mi
+            cpu: 10m
+
+    - name: clone-repo
+      nodeSelector:
+        nodegroup: arm-spot
+      metadata:
+        annotations:
+          vault.hashicorp.com/agent-inject: "true"
+          vault.hashicorp.com/role: "argo"
+          vault.hashicorp.com/auth-path: "auth/runner"
+          vault.hashicorp.com/agent-pre-populate-only: "true"
+          vault.hashicorp.com/agent-inject-secret-ci-token: "infrastructure/data/github/ci-pipekit-release"
+          vault.hashicorp.com/agent-inject-template-ci-token: |
+            {{ with secret "infrastructure/data/github/ci-pipekit-release" -}}
+                export gh_token="https://oauth2:{{ .Data.data.pat }}@github.com/pipekit/dotnet-example.git"
+            {{- end }}
+      container:
+        image: pipekitdev/ci-alpine
+        imagePullPolicy: Always
+        command:
+          - sh
+          - -c
+          - |
+            . /vault/secrets/ci-token
+            rm -rf /code/src/github.com/pipekit || true
+            mkdir -p /code/src/github.com/pipekit
+            cd /code/src/github.com/pipekit || exit 1
+            git config --global --add safe.directory '*'
+            git clone ${gh_token} || exit 1
+            cd dotnet-example
+            git config --global user.email "ci@pipekit.io"
+            git config --global user.name "Pipekit CI"
+            git checkout $GIT_COMMIT
+        volumeMounts:
+          - name: creds-and-code
+            mountPath: /code
+        resources:
+          requests:
+            memory: 200Mi
+            cpu: 100m
+
+    - name: build-container
+      retryStrategy:
+        retryPolicy: Always
+        limit: 3
+        backoff:
+          duration: "30s"
+          factor: 2
+      nodeSelector:
+        nodegroup: arm-spot
+      podSpecPatch: |
+        containers:
+        - name: main
+          resources:
+            requests:
+              memory: {{inputs.parameters.memory}}
+              cpu: {{inputs.parameters.cpu}}
+              ephemeral-storage: 7Gi
+            limits:
+              ephemeral-storage: 10Gi
+      inputs:
+        parameters:
+          - name: dockerfile
+          - name: memory
+          - name: cpu
+      container:
+        image: moby/buildkit:v0.15.2-rootless
+        command:
+          - sh
+          - -c
+          - |
+            mkdir /code
+            echo "Retrieving git clone..." && cp -R /git/src /code && mkdir -p /git/src/github.com/pipekit/dotnet-example/build_metadata
+            buildctl-daemonless.sh build \
+            --frontend \
+            dockerfile.v0 \
+            --local \
+            context=/code/src/github.com/pipekit/dotnet-example \
+            --local \
+            dockerfile=/code/src/github.com/pipekit/dotnet-example/ \
+            --opt filename={{inputs.parameters.dockerfile}} \
+            --opt platform=linux/arm64 \
+            --metadata-file=/git/src/github.com/pipekit/dotnet-example/build_metadata.json \
+            --export-cache \
+            type=registry,ref=docker.io/pipekitdev/dotnet-example:buildcache,mode=max,ignore-error=true \
+            --export-cache \
+            type=inline \
+            --import-cache \
+            type=registry,ref=docker.io/pipekitdev/dotnet-example:buildcache \
+            --import-cache \
+            type=registry,ref=docker.io/pipekitdev/dotnet-example:latest \
+            --output \
+            type=image,name=docker.io/pipekitdev/dotnet-example:latest,push=true \
+
+            # Echo useful things out to stdout
+            echo "---"
+            echo "Container information:"
+            cat /git/src/github.com/pipekit/dotnet-example/build_metadata.json
+        env:
+          - name: DOCKER_CONFIG
+            value: /buildkit/.docker
+          - name: BUILDKITD_FLAGS
+            value: --oci-worker-no-process-sandbox
+        volumeMounts:
+          - name: creds-and-code
+            mountPath: /buildkit/.docker/
+          - name: creds-and-code
+            mountPath: /git
+        securityContext:
+          seccompProfile:
+            type: Unconfined
+          runAsUser: 1000
+          runAsGroup: 1000
