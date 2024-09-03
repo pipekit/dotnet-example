@@ -219,7 +219,7 @@ spec:
             valueFrom:
               path: /tmp/container_image.txt
 
-    - name: get-digest
+    - name: tests
       nodeSelector:
         nodegroup: arm-spot
       inputs:
