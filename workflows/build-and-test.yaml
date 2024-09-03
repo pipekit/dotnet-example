@@ -38,6 +38,7 @@ spec:
                   value: "250Mi"
                 - name: cpu
                   value: "500m"
+            depends: clone-repo && mount-docker-secret
 
     - name: mount-docker-secret
       nodeSelector:
