@@ -23,11 +23,11 @@ spec:
     - name: workflow
       dag:
         tasks:
+          - name: clone-repo
+            template: clone-repo
           - name: mount-docker-secret
             template: mount-docker-secret
             depends: clone-repo
-          - name: clone-repo
-            template: clone-repo
           - name: build-container
             template: build-container
             arguments:
