@@ -15,6 +15,10 @@ spec:
         resources:
           requests:
             storage: 2Gi
+  volumes:
+    - name: code
+      emptyDir: {}
+
   templates:
     - name: workflow
       dag:
@@ -132,7 +136,6 @@ spec:
           - sh
           - -c
           - |
-            mkdir /code
             echo "Retrieving git clone..." && cp -R /git/src /code && mkdir -p /git/src/github.com/pipekit/dotnet-example/build_metadata
             buildctl-daemonless.sh build \
             --frontend \
@@ -169,6 +172,8 @@ spec:
             mountPath: /buildkit/.docker/
           - name: creds-and-code
             mountPath: /git
+          - name: code
+            mountPath: /code
         securityContext:
           seccompProfile:
             type: Unconfined
