@@ -181,13 +181,13 @@ spec:
             mountPath: /git
           - name: code
             mountPath: /code
-        outputs:
-          parameters:
-            - name: container_image
-              valueFrom:
-                path: /tmp/container_image.txt
         securityContext:
           seccompProfile:
             type: Unconfined
           runAsUser: 1000
           runAsGroup: 1000
+      outputs:
+        parameters:
+          - name: container_image
+            valueFrom:
+              path: /tmp/container_image.txt
