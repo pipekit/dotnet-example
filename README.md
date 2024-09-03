@@ -1,4 +1,4 @@
-# dotnet-example
+# .NET CI Example using Argo Workflows
 
 This example uses Argo Workflows to build and test a simple .NET Core application.
 
